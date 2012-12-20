@@ -1,4 +1,4 @@
 ieeefp
 ======
 
-An implementation of ieeefp
+An implementation of ieeefp for Intel platforms
