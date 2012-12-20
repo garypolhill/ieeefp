@@ -1,0 +1,41 @@
+Version 3.0: 2007-10-17:
+
+	fpset/getmask() functions changed to have the correct sense for the bit
+	flags (i.e. exception if bit set rather than bit cleared).
+
+	fpclass() function changed to provide a simpler test for S/QNaN, which
+	should allow compiler optimisation to be used when building the
+	library.
+
+	x87FPUcmds.c rewritten to use inline assembly, simplifying the build
+	and providing more general platform compatibility.
+
+	Licence has been changed to the LGPL.
+
+Version 2.0: 2004-03-04:
+
+	Complete rewrite. All assembly instructions accessed from a single file
+	and various utilities written around those to supply the functionality.
+	Support for fpclass(), finite(), fpgetmask(), fpsetmask() added, plus 
+	utility	functions to print the FPU status and control words. The test
+	program makes a full check that functions work properly without relying
+	one comparison with output from a Sparc. This means tests can be known
+	to have been passed. Comparison with output from Sparc is still
+	available if required for the more experienced user.
+
+Version 1.2: 2003-08-28:
+
+	Modified implementation of fpsetsticky() to allow any value to be given
+	as argument, not just zero. Fixed bugs with version 1.1.
+
+Version 1.1: 2003-07-16
+
+	Implementation of fpsetprecision() and fpgetprecision(). These are
+	functions specific to Intel processors to ensure that calculations
+	are done using the required precision.
+
+Version 1.0: 2003-07-10
+
+	Implementation of fpsetsticky(0), fpgetsticky(), fpsetround() and
+	fpgetround(). These have been tested to behave in the same way
+	as the Solaris implementation of these functions.

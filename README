@@ -1,0 +1,533 @@
+Implementing exception checking and rounding direction changing
+functions in a Cygwin/Intel environment, which appear on standard Unix
+platforms in ieeefp.h. It should also work in Linux environments that
+don't provide these functions.
+
+Version 3.0
+
+As of Version 3.0, CIieeefp is released under a GNU Lesser General
+Public Licence.
+
+0 Installation and use
+
+THIS CODE IS FOR INTEL PLATFORMS ONLY. It uses assembly language
+containing instructions from the Intel manual. If your CPU is not
+Intel or Intel compatible, this software will almost certainly NOT
+work.
+
+THIS SOFTWARE IS A SHAMELESS HACK. Although I have made an effort to
+do things properly, my knowledge of Intel assembly language is
+rudimentary at best, and I cannot guarantee that the functions herein
+work exactly as required. Version 3.0 is rather less of a hack than
+earlier versions thanks to a contribution from Glenn Burkhardt.
+
+To build this software do:
+
+make
+make test
+env PREFIX=/install/dir make install
+
+/install/dir should be a path to an include directory, into which the
+header files will be put, and a lib directory, into which the library
+file will be put. So, for example, if you are using this software in
+conjunction with Swarm, you might want the libraries to be installed
+alongside your Swarm installation. By default, this is in the
+directory /Swarm-2.1.1, in which case you would do:
+
+env PREFIX=/Swarm-2.1.1 make install
+
+Then the library files would be installed in /Swarm-2.1.1/lib and the
+header files in /Swarm-2.1.1/include.
+
+Later versions of Swarm are installed alongside the Cygwin
+installation, and you would probably be better off using the default
+installation location of /usr/local. If you're lazy, then you could
+just use /usr.
+
+On some Cygwin systems the root directory is not recognised for some
+reason (i.e. typing ls / gives a 'file not found' error). In such
+cases you will have to specify a prefix when doing make install that
+includes a top level drive letter, e.g.:
+
+env PREFIX=//c/install/dir make install
+
+If C is not a valid drive letter on your system then replace //c in
+the above command with //? where ? is a valid drive letter.
+
+Later versions of Cygwin don't accept the //c notation for a drive,
+and you should replaced //? for drive ? with /cygdrive/?.
+
+The Swarm example above would be:
+
+env PREFIX=//c/Swarm-2.1.1 make install
+
+The first build creates the CIieeefp library. It requires a version of
+gcc 3.1 or later to use the more programmer-friendly asm features
+these versions enable. If you have a version of gcc earlier than this,
+you should mv x87FPUcmds.c-gcc-pre3.1 x87FPUcmds.c, before doing
+make. The CIieeefp library should be compilable with -O2 optimisation
+(LIB_OPTIM variable in the Makefile). Remove the -O2 optimisation if
+you have problems or prefer to be cautious.
+
+The make test command then checks that various functions work
+correctly, with particular attention on those controlling rounding
+direction and detecting floating point errors using the sticky
+bits. If the test fails then you probably don't have the same Intel
+chip as me, or you don't have an Intel chip at all. The TEST_OPTIM
+variable in the Makefile allows you to set compiler optimisation flags
+for the test-CIieeefp program. By default these are cleared, as some
+of the tests fail with compiler optimisation of the test-CIieeefp
+program.
+
+If you want to compare the behaviour of the floating point unit with
+that on a Sparc chip, you can do make comparison. This will give you
+some output indicating where the behaviour is different. Some
+differences in behaviour between the Sparc and Intel chips should be
+expected. The IEEE standard is not intended to be sufficiently
+restrictive that the result of all possible floating point operations
+is guaranteed to be the same on all platforms.
+
+The library contains eight IEEE functions: fpgetsticky(),
+fpsetsticky(), fpgetround(), fpsetround(), fpgetmask(), fpsetmask(),
+fpclass(), finite(). These are designed to function as per the POSIX
+standard. In version 3.0, the functioning of fpgetmask() and
+fpsetmask() has been corrected to follow the normal pattern of bit set
+=> exception rather than bit clear => exception as in earlier versions
+of CIieeefp.
+
+Four extra functions are also contained within the library:
+fpgetprecision(), fpsetprecision(), print_fpu_control(), and
+print_fpu_status(). The first two are designed specifically for Intel
+processors to force the correct (64 bit) precision to be used in
+operations, as opposed to the default, which is to use extended (80
+bit) precision. The print_fpu_ functions allow you to print the
+contents of the Floating Point Unit (FPU) status and control words on
+the chip, if you are interested in that sort of thing.
+
+fpgetsticky() returns a variable of type fp_except, which can be
+checked for various exceptions using a bitwise AND. The exceptions you
+can check for are defined using macros -- e.g. in C code:
+
+{
+  fp_except x = fpgetsticky();
+
+  if(x & FP_X_INV) { /* invalid operation since last fpsetsticky(0) */ }
+  if(x & FP_X_DNML) { /* denormalised operand since last fpsetsticky(0) */ }
+  if(x & FP_X_DZ) { /* division by zero since last fpsetsticky(0) */ }
+  if(x & FP_X_OFL) { /* overflow since last fpsetsticky(0) */ }
+  if(x & FP_X_UFL) { /* underflow since last fpsetsticky(0) */ }
+  if(x & FP_X_IMP) { /* imprecision since last fpsetsticky(0) */ }
+}
+
+Calling fpsetsticky() sets the exception flags to the required value,
+returning the prior settings as per fpgetsticky().
+
+fpgetmask() and fpsetmask() work in a similar way to
+fpget/setsticky(). They provide an alternative means to handle errors
+from floating point arithmetic -- a rather less user-friendly one. If
+a bit corresponding to an exception is set in the exception mask,
+then the program will simply terminate. On Unix systems, the masks can
+be used to deliver signals (SIGFPE) that can be caught and dealt with
+using an appropriate handler. I have not tested whether this works on
+a Cygwin platform. e.g.
+
+{
+  fpsetmask(FP_X_DZ | FP_X_IMP);
+		      /* Cause the program to terminate immediately any 
+			 floating point error EXCEPT division by zero
+			 or imprecision occurs */
+}
+
+fpgetround() returns the current rounding direction setting in the CPU
+floating point unit as type fp_rnd. Again, macros are defined for you
+to check this:
+
+{
+  fp_rnd r = fpgetround();
+
+  if(r == FP_RN) { /* round to nearest even */ }
+  if(r == FP_RM) { /* round to minus infinity */ }
+  if(r == FP_RP) { /* round to plus infinity */ }
+  if(r == FP_RZ) { /* round to zero */ }
+}
+
+You can call fpsetround(arg) with arg set to FP_RN, FP_RM, FP_RP or
+FP_RZ to set the required rounding direction accordingly. All floating
+point operations after this call and until the next call will have the
+given rounding direction, including those in any library function you
+might call.
+
+fpclass(arg) allows you to determine the kind of (double precision)
+floating point number that arg is. The following gives an example:
+
+{
+  double num = 123.456;
+
+  switch(fpclass(num)) {
+  case FP_SNAN:
+    /* Signalling NaN (not-a-number). You won't be able to check for this. */
+    break;
+  case FP_QNAN:
+    /* Quiet NaN. e.g. from sqrt(-1) */
+    break;
+  case FP_NINF:
+  case FP_PINF:
+    /* [N]egative/[P]ositive infinity */
+    break;
+  case FP_NDENORM:
+  case FP_PDENORM:
+    /* [N]egative/[P]ositive denormalised number. These are small numbers
+       less (in magnitude) than DBL_MIN (float.h) but more than zero, which
+       allow a gradual underflow, but with considerable loss of accuracy.
+       for some reason this implementation of fpclass never detects these
+       classes -- they are always returned as normalised. */
+    break;
+  case FP_NZERO:
+    /* Negative zero. The IEEE 754 standard stipulates that negative zero
+       be representable. It is equal to positive zero (i.e. -0.0 == 0.0),
+       and is not less than positive zero. The only way to test for
+       negative zero is to use fpclass(). */
+    break;
+  case FP_PZERO:
+    /* Positive zero. */
+    break;
+  case FP_NNORM:
+  case FP_PNORM:
+    /* [N]egative/[P]ositive normalised number. These form the majority of
+       floating point numbers in the IEEE standard, and (with the exception
+       of zero) are probably what you are thinking of when you are writing
+       code using floating point numbers). */
+    break;
+  default:
+    /* PANIC! Not a valid floating point number class */
+    abort();
+  }
+}
+
+finite(arg) returns 1 if the double arg is one of the zero, normalised
+or denormalised classes returned by fpclass(), and 0 otherwise.
+
+fpgetprecision() returns a variable of type fp_pctl containing the
+precision control setting in the CPU floating point unit. Macros are
+defined for you to check the result:
+
+{
+  fp_pctl p = fpgetprecision();
+
+  if(r == FP_PC_SGL) { /* Single precision calculations */ }
+  if(r == FP_PC_DBL) { /* Double precision calculations */ }
+  if(r == FP_PC_EXT) { /* Double extended precision calculations (default) */ }
+  if(r == FP_PC_RES) { /* Reserved precision control setting */ }
+}
+
+Note that the default setting is used regardless of the type of the
+variable. For example:
+
+int main(int argc, char **argv)
+{
+  double x = 1.0, y = 3.0;
+  double z;
+
+  z = x / y;		/* This calculation is performed in extended
+			   precision and z contains the truncated
+			   result. z is not guaranteed to be the nearest
+			   double precision number to the infinitely
+			   precise result */
+
+  fpsetprecision(FP_PC_DBL);
+  z = x / y;		/* Now the calculation is performed in double
+			   precision, and z is guaranteed to be the
+			   nearest double precision number to the
+			   infinitely precise result */
+
+  return 0;
+}
+
+fpsetprecision() allows you to set the precision control field, as
+demonstrated above. The precision control field can be set to
+FP_PC_SGL, FP_PC_DBL, or FP_PC_EXT. Any other setting will result in a
+fatal error message. The function returns the previous setting.
+
+There are a few calculations where using FP_PC_EXT will not return the
+closest double precision floating point number to the infinitely
+precise result, as stipulated by the IEEE standard. One example is
+2^53 + (1 + 2^12), which returns 2^53 instead of the (closer) 2^53 + 2
+that is returned when FP_PC_DBL is used.
+
+
+1 Introduction
+
+The IEEE 754 standard stipulates that a conforming environment
+provides functions for checking floating point exceptions and changing
+rounding directions. The functions to do this in C are provided
+through the header file ieeefp.h in POSIX conforming
+platforms. Although this header file appears in the Cygwin
+environment, the functions are not implemented, and any use of them in
+C code results in linker errors at compile time. Thus Cygwin is not
+fully IEEE 754 compliant.
+
+(The remainder of) this document describes the process by which a some
+of the functions provided by ieeefp.h have been (partially)
+implemented in the Cygwin environment for an Intel CPU. These
+functions are fpsetsticky(), fpgetsticky(), fpsetround(),
+fpgetround(), fpsetmask(), fpgetmask(), fpclass(), and finite().
+
+
+2 Intel CPU floating point handling instructions
+
+The sources for this material are the Intel Pentium IV manuals parts 1
+(Basic Architecture, BA) and 2 (Instruction Set Reference, ISR)
+available (at the time of writing) in PDF format from
+http://www.intel.com/design/Pentium4/manuals/.
+
+Floating point arithmetic in Intel CPUs is complicated somewhat by the
+fact that there are two floating point units in the CPU: the x87 FPU,
+and the MMX FPU, which share state registers (BA, p. 8-2). Code using
+both FPUs therefore has to "manage" the x87 and MMX states
+(ibid.). This document, and the implemented functions, assume no
+x87/MMX mix in the code, and that all operations take place on the x87
+FPU.
+
+The floating point execution environment is contained in a series of
+registers (BA, p. 8-1):
+
+* Eight data registers. These are 80-bit floating point operands with
+  65 bits of significand (including the hidden bit) and 15 bits of
+  exponent, in IEEE-754 double-extended conforming format.
+
+* The status register, which contains, among other things, the
+  exception flags.
+
+* The control word register, which contains, among other things, the
+  rounding and precision control.
+
+* The tag word register, which contains information about the class of
+  floating point number for each of the data registers (valid, zero,
+  empty or NaN/Inf/denormal).
+
+* The last instruction pointer register -- provided for exception
+  handlers.
+
+* The last data (operand) pointer register -- provided for exception
+  handlers.
+
+* Opcode register -- provided for exception handlers.
+
+The registers of interest for the functions implemented are the status
+register and the control word register. The status register is
+arranged thus:
+
+15 | 14 | 13 | 12 | 11 | 10 |  9 |  8 |  7 |  6 |  5 |  4 |  3 |  2 |  1 |  0
+## | C3 | ## | ## | ## | C2 | C1 | C0 | ## | ## | PE | UE | OE | ZE | DE | IE
+
+... where ## are reserved/irrelevant, PE is Precision Exception, UE
+and OE are underflow and overflow respectively, ZE is division by
+zero, DE denormalised operand, and IE invald operation. These
+exception flags are 'sticky' in that they are set once their
+conditions occur, and remain set until an instruction that explicitly
+clears them is executed. The C3, C2, C1, and C0 bits are Condition
+Code flags that are used to determine the class of a floating point
+number following a call to FXAM (ISR, p. 3-306).
+
+The FSTSW addr instruction stores the status word at the specified
+16-bit location given as argument, after checking for any pending
+unmasked floating-point exceptions (ISR, p. 3-291). The exception
+flags are cleared using the FCLEX instruction (ISR, p. 3-215), which
+also first checks for pending unmasked floating-point
+exceptions. Somewhat irritatingly, the only way to set the exception
+flags to a specified value involves saving then loading the whole
+floating point environment using the FSTENV (ISR, p. 3-288) and FLDENV
+(ISR, p. 3-253) instructions. The size and layout of the floating
+point execution environment depends on the operating mode (protected
+or real-address) and operand-size (32 or 16-bit) attributes of the
+processor. This information is obtainable, but considerably
+complicates things, and is therefore not considered for use here.
+
+The control word register is arranged thus (BA, p. 8-9):
+
+15 | 14 | 13 | 12 | 11 | 10 |  9 |  8 |  7 |  6 |  5 |  4 |  3 |  2 |  1 |  0
+## | ## | ## | ## |    RC   |    PC   | ## | ## | PM | UM | OM | ZM | DM | IM
+
+Where RC affects the rounding control as follows (BA, p. 4-20):
+
+* RC = 00B -- Round to nearest even.
+* RC = 01B -- Round to negative infinity.
+* RC = 10B -- Round to positive infinity.
+* RC = 11B -- Round to zero.
+
+PC affects the precision control as follows (BA, p. 8-10):
+
+* PC = 00B -- Single precision (24 bit significand).
+* PC = 01B -- Reserved.
+* PC = 10B -- Double precision (53 bit significand).
+* PC = 11B -- Double extended precision (64 bit significand).
+
+The PM, UM, OM, ZM, DM, IM bits correspond to floating point exception
+masks for precision, underflow, overflow, division by zero,
+denormalisation, and invalid operation exceptions respectively.
+
+The control word is accessed using the FSTCW addr instruction, which
+stores the control word at the specified 16-bit location after
+checking for pending unmasked floating-point exceptions. It is set
+using the FLDCW addr instruction, which puts the contents of the
+specified 16-bit location into the control word register. This
+instruction can cause pending floating point exceptions to be
+generated, which can be avoided by preceding it with an FCLEX
+instruction.
+
+The fact that FLDCW should be preceded by an FCLEX, and that the
+status word cannot be directly set without using the mode-dependent
+FLDENV instruction means that using rounding control and exception
+checking in the same program needs to be handled carefully. It also
+means that software using these functions cannot be guaranteed safe if
+used in conjunction with other software libraries that check the
+floating point exception flags by means other than the functions
+provided here.
+
+The FXAM instruction sets the Condition Code flags according to the
+class of the number on the top of the floating point stack as follows:
+
+Class			Sign		C3	C2	C1	C0
+
+Not a Number	|	n/a		0	0	0/1	0
+
+		|	-ve		0	1	1	0	
+normalised	|
+		|	+ve		0	1	0	0
+
+		|	-ve		0	1	1	1
+infinity	|
+		|	+ve		0	1	0	1
+
+		|	-ve		1	0	1	0
+zero		|
+		|	+ve		1	0	0	0
+
+		|	-ve		1	1	1	0
+denormalised	|
+		|	+ve		1	1	0	0
+
+A Signalling NaN is indicated by a 0 as the MSB of the significand,
+otherwise the number is a Quiet Nan. Currently the way that fpclass is
+written, a signalling NaN will not be successfully detected, and a
+quiet NaN will be returned. For some reason, denormalised numbers are
+also not successfully detected in this implementation, and are instead
+returned as normalised numbers. This is strange, since other classes
+using the C3 and C2 bits (normalised, infinity & zero) are all
+correctly detected.
+
+
+3 Implementing the ieeefp functions
+
+3.1 Accessing the assembly instructions
+
+Implementing the ieeefp functions requires access to assembly language
+instructions that are not generated by the compiler from C code. Five
+instructions are required: FSTSW (read the status word), FSTCW (read
+the control word), FCLEX (clear the sticky exception flags), FLDCW
+(write the control word), FXAM (examine the number on the top of the
+stack).
+
+Access to these functions is given by x87FPUcmds.c, which from version
+3.0 uses inline assembly language to put the instructions in. (Thanks
+to Glenn Burkhardt.)
+
+Once these functions are available, it is then possible to implement
+the IEEE functions. However, since these all involve accessing
+particular bits in the control and status words, it is worth having a
+few utility functions to help with this. The code in x87FPUutils.c
+contains these functions, which shift out irrelevant bits in the
+status or control words, returning the bits required in the least
+significant bits of result.
+
+
+3.2 fpget/setsticky()
+
+The sticky bits need to be saved in a global variable
+saved_sticky_bits, because those functions requiring a call to FLDCW
+require a call to FCLEX to clear the exception flags before the
+control word is set to a new value. fpgetsticky() simply makes a call
+to access bits 0-5 of the status word, makes sure that
+saved_sticky_bits is kept up to date, and returns the result.
+
+fpsetsticky() actually just clears the exception flags on the chip
+using FCLEX, saving the required setting in the global variable
+saved_sticky_bits.
+
+
+3.3 fpget/setmask()
+
+fpgetmask() just returns the result of a call to FSTCW, accessing bits
+0-5 of the control word.
+
+fpsetmask() sets the mask bits on the control word using FLDCW, but
+must first save the sticky bits in the status word, as the call to
+FLDCW requires FCLEX to be executed first, which clears these bits.
+
+Note that on Sun machines, the fpsetmask() function clears the
+sticky bit corresponding to any exception being enabled. This is not
+done here, and probably should be at some point.
+
+
+3.4 fpget/setround()
+
+fpgetround() accesses the rounding control flags through a call to
+FSTCW, and checks the result before returning it.
+
+fpsetround() sets the rounding control bits on the control word using
+a call to FLDCW, but must first save the sticky bits as the call to
+FLDCW requires FCLEX to be executed first.
+
+
+3.5 fpget/setprecision()
+
+fpgetprecision() accesses the precision control flags on the control
+word through a call to FSTCW, and checks the result before returning
+it.
+
+fpsetprecision() sets the precision control bits on the control word
+using a call to FLDCW, but must first save the sticky bits as the call
+to FLDCW requires FCLEX to be executed first.
+
+
+3.6 fpclass()
+
+fpclass() makes a call to FXAM that sets the condition code bits on
+the status word to values that indicate the floating point class of
+the number. The x87FPUfxam() function includes a call to FSTSW, and
+returns the status word. A switch statement is then used to resolve
+the condition code bit settings into the appropriate number
+classes. The type of NaN (signalling/quiet) is then determined using a
+method that is supposed to be independent of whether the architecture
+is big or little endian, but although this method should work in
+theory, in practice a signalling NaN would get converted to a quiet
+NaN by this process. This can happen simply when setting a variable to
+a value that is a signalling NaN.
+
+
+3.7 finite()
+
+finite() just checks the result of a call to fpclass(), returning 1 if
+it is one of the finite classes and 0 otherwise.
+
+
+5 Improvements
+
+These functions have been implemented with only the most basic
+understanding of assembly language and the GNU assembler. The
+assumption has been made that the GNU assembler understands the Intel
+instructions for accessing the floating point registers. Furthermore,
+the assumption has been made that no other process can interfere with
+the register settings for the process using these functions, and vice
+versa. There are also potential issues with MMX technology, for which
+no allowance has been made. The functions make no allowance for the
+code to include other functions that access the floating point
+registers. Other functions appearing as standard in ieeefp.h are not
+implemented here.
+
+In summary, this is very much a hacked effort, based on the most
+rudimentary knowledge, and should be treated with appropriate
+suspicion. That said, the test software in test-CIieeefp.c does
+successfully demonstrate that rounding control, checking of sticky
+bits, and to a certain extent, determination of floating point number
+class, have all been enabled.
